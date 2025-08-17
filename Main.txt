@@ -1,0 +1,523 @@
+-- Anti-Fling Toggle GUI Mobile Completa
+-- Coloque este script no StarterPlayerScripts (LocalScript)
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local workspace = game:GetService("Workspace")
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- Estado do anti-fling
+local antiFlingEnabled = false
+local connections = {}
+local loops = {}
+
+-- Variáveis para o script principal
+local originalDoorPositions = {}
+local doorCheckRadius = 50
+
+-- Criar GUI
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "AntiFlingGUI"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = playerGui
+
+-- Frame principal (pequeno e discreto)
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 160, 0, 70)
+mainFrame.Position = UDim2.new(0, 20, 0, 100)
+mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+mainFrame.BorderSizePixel = 0
+mainFrame.Parent = screenGui
+
+-- Bordas arredondadas
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 15)
+corner.Parent = mainFrame
+
+-- Sombra
+local shadow = Instance.new("Frame")
+shadow.Name = "Shadow"
+shadow.Size = UDim2.new(1, 4, 1, 4)
+shadow.Position = UDim2.new(0, -2, 0, 2)
+shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+shadow.BackgroundTransparency = 0.8
+shadow.BorderSizePixel = 0
+shadow.ZIndex = mainFrame.ZIndex - 1
+shadow.Parent = mainFrame
+
+local shadowCorner = Instance.new("UICorner")
+shadowCorner.CornerRadius = UDim.new(0, 15)
+shadowCorner.Parent = shadow
+
+-- Título
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Name = "TitleLabel"
+titleLabel.Size = UDim2.new(1, -10, 0, 25)
+titleLabel.Position = UDim2.new(0, 5, 0, 5)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "🛡️ Anti-Fling ball"
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.TextScaled = true
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.Parent = mainFrame
+
+-- Toggle Button
+local toggleButton = Instance.new("TextButton")
+toggleButton.Name = "ToggleButton"
+toggleButton.Size = UDim2.new(0, 140, 0, 35)
+toggleButton.Position = UDim2.new(0.5, -70, 0, 30)
+toggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+toggleButton.BorderSizePixel = 0
+toggleButton.Text = "OFF"
+toggleButton.TextColor3 = Color3.fromRGB(255, 100, 100)
+toggleButton.TextScaled = true
+toggleButton.Font = Enum.Font.GothamBold
+toggleButton.Parent = mainFrame
+
+local buttonCorner = Instance.new("UICorner")
+buttonCorner.CornerRadius = UDim.new(0, 10)
+buttonCorner.Parent = toggleButton
+
+-- FUNÇÕES DO SCRIPT PRINCIPAL --
+
+-- Função para remover colisão de todos os BoatCollide
+local function removeBoatCollisions()
+    local beachNorth = workspace.Model:FindFirstChild("BeachNorth")
+    if beachNorth then
+        local boatCollideFolder = beachNorth.Model:FindFirstChild("BoatCollide")
+        if boatCollideFolder then
+            -- Remove colisão de BoatCollide individual
+            local boatCollide = boatCollideFolder:FindFirstChild("BoatCollide")
+            if boatCollide then
+                boatCollide.CanCollide = false
+                print("Colisão removida de BoatCollide individual")
+            end
+            
+            -- Remove colisão de todos os filhos do folder BoatCollide
+            for _, child in pairs(boatCollideFolder:GetChildren()) do
+                if child:IsA("BasePart") then
+                    child.CanCollide = false
+                    print("Colisão removida de: " .. child.Name)
+                end
+            end
+        end
+    end
+end
+
+-- Função para detectar e remover colisão de barcos quando player estiver neles
+local function checkPlayerBoats()
+    for _, otherPlayer in pairs(Players:GetPlayers()) do
+        if otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local character = otherPlayer.Character
+            local humanoidRootPart = character.HumanoidRootPart
+            
+            -- Verifica se o player está próximo/em um barco
+            local raycast = workspace:Raycast(humanoidRootPart.Position, Vector3.new(0, -10, 0))
+            if raycast and raycast.Instance then
+                local hit = raycast.Instance
+                if hit.Name:lower():find("boat") or hit.Parent.Name:lower():find("boat") then
+                    hit.CanCollide = false
+                end
+            end
+        end
+    end
+end
+
+-- Função para remover todas as SoccerBalls de forma mais agressiva
+local function removeSoccerBalls()
+    -- Remove do workspace
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and (obj.Name:lower():find("ball") or obj.Name:lower():find("soccer")) then
+            obj:Destroy()
+            print("Bola deletada do workspace: " .. obj.Name)
+        elseif obj:IsA("Tool") and (obj.Name:lower():find("ball") or obj.Name:lower():find("soccer")) then
+            obj:Destroy()
+            print("Tool bola deletada: " .. obj.Name)
+        elseif obj:IsA("Model") and (obj.Name:lower():find("ball") or obj.Name:lower():find("soccer")) then
+            obj:Destroy()
+            print("Model bola deletada: " .. obj.Name)
+        end
+    end
+    
+    -- Remove especificamente do WorkspaceCom
+    local workspaceCom = workspace:FindFirstChild("WorkspaceCom")
+    if workspaceCom then
+        local giveTools = workspaceCom:FindFirstChild("001_GiveTools")
+        if giveTools then
+            for _, child in pairs(giveTools:GetChildren()) do
+                if child.Name == "SoccerBall" or child.Name:lower():find("ball") then
+                    child:Destroy()
+                    print("SoccerBall removida do GiveTools: " .. child.Name)
+                end
+            end
+        end
+    end
+    
+    -- Remove do player (backpack, character, etc)
+    if player then
+        -- Remove do Backpack
+        if player:FindFirstChild("Backpack") then
+            for _, child in pairs(player.Backpack:GetChildren()) do
+                if child.Name:lower():find("ball") or child.Name:lower():find("soccer") then
+                    child:Destroy()
+                    print("Bola removida do Backpack: " .. child.Name)
+                end
+            end
+        end
+        
+        -- Remove do Character
+        if player.Character then
+            for _, child in pairs(player.Character:GetChildren()) do
+                if child.Name:lower():find("ball") or child.Name:lower():find("soccer") then
+                    child:Destroy()
+                    print("Bola removida do Character: " .. child.Name)
+                end
+            end
+            
+            -- Verifica Humanoid especificamente
+            local humanoid = player.Character:FindFirstChild("Humanoid")
+            if humanoid then
+                for _, child in pairs(humanoid:GetChildren()) do
+                    if child.Name:lower():find("ball") or child.Name:lower():find("soccer") then
+                        child:Destroy()
+                        print("Bola removida do Humanoid: " .. child.Name)
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- Função para monitorar adições de objetos ao personagem
+local function setupCharacterMonitoring()
+    if player.Character then
+        -- Monitora adições diretas ao Character
+        local charConnection = player.Character.ChildAdded:Connect(function(child)
+            if antiFlingEnabled and (child.Name:lower():find("ball") or child.Name == "SoccerBall" or child.Name:lower():find("soccer")) then
+                wait(0.1)
+                child:Destroy()
+                print("SoccerBall deletada imediatamente do Character: " .. child.Name)
+            end
+        end)
+        table.insert(connections, charConnection)
+        
+        -- Monitora adições ao Humanoid
+        local humanoid = player.Character:FindFirstChild("Humanoid")
+        if humanoid then
+            local humanoidConnection = humanoid.ChildAdded:Connect(function(child)
+                if antiFlingEnabled and (child.Name:lower():find("ball") or child.Name == "SoccerBall" or child.Name:lower():find("soccer")) then
+                    wait(0.1)
+                    child:Destroy()
+                    print("SoccerBall deletada imediatamente do Humanoid: " .. child.Name)
+                end
+            end)
+            table.insert(connections, humanoidConnection)
+        end
+    end
+end
+
+-- Função para ativar noclip seletivo (mantém colisão com chão)
+local function enableSelectiveNoclip()
+    if player.Character then
+        for _, part in pairs(player.Character:GetChildren()) do
+            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                part.CanCollide = false
+            elseif part:IsA("BasePart") and part.Name == "HumanoidRootPart" then
+                -- Mantém colisão apenas com partes que estão abaixo (chão)
+                local raycast = workspace:Raycast(part.Position, Vector3.new(0, -10, 0))
+                if raycast and raycast.Instance then
+                    local hit = raycast.Instance
+                    -- Se há algo abaixo, mantém colisão mínima para não cair
+                    if hit.Name:lower():find("floor") or hit.Name:lower():find("ground") or hit.Name:lower():find("baseplate") or hit.Material == Enum.Material.Grass then
+                        part.CanCollide = true
+                    else
+                        part.CanCollide = false
+                    end
+                else
+                    part.CanCollide = false
+                end
+            end
+        end
+    end
+end
+
+-- Função para desativar fling do humanoid (mais agressiva)
+local function disableFling()
+    if player.Character and player.Character:FindFirstChild("Humanoid") and player.Character:FindFirstChild("HumanoidRootPart") then
+        local humanoid = player.Character.Humanoid
+        local rootPart = player.Character.HumanoidRootPart
+        
+        -- Remove PlatformStand para permitir movimento
+        humanoid.PlatformStand = false
+        
+        -- Anti-fling mais agressivo - previne qualquer velocidade alta
+        if rootPart.AssemblyLinearVelocity.Magnitude > 50 then
+            rootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            rootPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+            
+            -- Remove qualquer BodyMover que possa estar causando fling
+            for _, child in pairs(rootPart:GetChildren()) do
+                if child:IsA("BodyPosition") or child:IsA("BodyVelocity") or child:IsA("BodyThrust") or child:IsA("BodyForce") then
+                    if child.Name ~= "AntiGravity" then
+                        child:Destroy()
+                    end
+                end
+            end
+        end
+        
+        -- Limita a velocidade máxima
+        if rootPart.Velocity.Magnitude > 100 then
+            rootPart.Velocity = rootPart.Velocity.Unit * 16
+        end
+    end
+end
+
+-- Função para registrar posições originais das portas
+local function registerOriginalDoorPositions()
+    originalDoorPositions = {}
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj:IsA("Model") and (obj.Name:lower():find("door") or obj.Name:lower():find("gate")) then
+            if obj.PrimaryPart then
+                originalDoorPositions[obj] = obj.PrimaryPart.Position
+            elseif obj:FindFirstChild("Door") then
+                originalDoorPositions[obj] = obj.Door.Position
+            elseif obj:FindFirstChildOfClass("BasePart") then
+                originalDoorPositions[obj] = obj:FindFirstChildOfClass("BasePart").Position
+            end
+        elseif obj:IsA("BasePart") and (obj.Name:lower():find("door") or obj.Name:lower():find("gate")) then
+            originalDoorPositions[obj] = obj.Position
+        end
+    end
+    print("Posições originais das portas registradas: " .. tostring(#originalDoorPositions))
+end
+
+-- Função para verificar e deletar portas modificadas
+local function checkAndDeleteModifiedDoors()
+    if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
+        return
+    end
+    
+    local playerPosition = player.Character.HumanoidRootPart.Position
+    
+    for doorObj, originalPos in pairs(originalDoorPositions) do
+        if doorObj and doorObj.Parent then
+            local currentPos
+            
+            if doorObj:IsA("Model") then
+                if doorObj.PrimaryPart then
+                    currentPos = doorObj.PrimaryPart.Position
+                elseif doorObj:FindFirstChild("Door") then
+                    currentPos = doorObj.Door.Position
+                elseif doorObj:FindFirstChildOfClass("BasePart") then
+                    currentPos = doorObj:FindFirstChildOfClass("BasePart").Position
+                end
+            elseif doorObj:IsA("BasePart") then
+                currentPos = doorObj.Position
+            end
+            
+            if currentPos then
+                local distanceFromOriginal = (currentPos - originalPos).Magnitude
+                local distanceFromPlayer = (currentPos - playerPosition).Magnitude
+                
+                if distanceFromOriginal > 5 or distanceFromPlayer < doorCheckRadius then
+                    doorObj:Destroy()
+                    originalDoorPositions[doorObj] = nil
+                    print("Porta deletada por estar fora de posição ou muito perto: " .. doorObj.Name)
+                end
+            end
+        else
+            originalDoorPositions[doorObj] = nil
+        end
+    end
+end
+
+-- Função para detectar novas portas próximas
+local function checkNewDoorsNearPlayer()
+    if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
+        return
+    end
+    
+    local playerPosition = player.Character.HumanoidRootPart.Position
+    
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj:IsA("Model") and (obj.Name:lower():find("door") or obj.Name:lower():find("gate")) then
+            if not originalDoorPositions[obj] then
+                local doorPos
+                if obj.PrimaryPart then
+                    doorPos = obj.PrimaryPart.Position
+                elseif obj:FindFirstChild("Door") then
+                    doorPos = obj.Door.Position
+                elseif obj:FindFirstChildOfClass("BasePart") then
+                    doorPos = obj:FindFirstChildOfClass("BasePart").Position
+                end
+                
+                if doorPos and (doorPos - playerPosition).Magnitude < doorCheckRadius then
+                    obj:Destroy()
+                    print("Nova porta deletada por estar próxima: " .. obj.Name)
+                end
+            end
+        elseif obj:IsA("BasePart") and (obj.Name:lower():find("door") or obj.Name:lower():find("gate")) then
+            if not originalDoorPositions[obj] then
+                local doorPos = obj.Position
+                if (doorPos - playerPosition).Magnitude < doorCheckRadius then
+                    obj:Destroy()
+                    print("Nova porta (BasePart) deletada por estar próxima: " .. obj.Name)
+                end
+            end
+        end
+    end
+end
+
+-- FUNÇÕES DE CONTROLE DO SCRIPT --
+
+-- Função para iniciar o script principal
+local function startScript()
+    print("🛡️ Anti-Fling Script ATIVADO!")
+    
+    -- Executa funções iniciais
+    removeBoatCollisions()
+    removeSoccerBalls()
+    registerOriginalDoorPositions()
+    
+    -- Configura monitoramento de personagem
+    if player.Character then
+        setupCharacterMonitoring()
+    end
+    
+    -- Loop principal que mantém noclip e anti-fling ativos
+    local heartbeatConnection = RunService.Heartbeat:Connect(function()
+        enableSelectiveNoclip()
+        disableFling()
+        checkPlayerBoats()
+        checkAndDeleteModifiedDoors()
+    end)
+    table.insert(connections, heartbeatConnection)
+    
+    -- Loop contínuo para remover bolas e verificar portas
+    local continuousLoop = task.spawn(function()
+        while antiFlingEnabled do
+            removeSoccerBalls()
+            checkNewDoorsNearPlayer()
+            wait(0.5)
+        end
+    end)
+    table.insert(loops, continuousLoop)
+end
+
+-- Função para parar o script principal
+local function stopScript()
+    print("🛡️ Anti-Fling Script DESATIVADO!")
+    
+    -- Desconecta todas as conexões
+    for _, connection in pairs(connections) do
+        if connection and connection.Connected then
+            connection:Disconnect()
+        end
+    end
+    connections = {}
+    
+    -- Para todos os loops
+    for _, loop in pairs(loops) do
+        if loop then
+            task.cancel(loop)
+        end
+    end
+    loops = {}
+    
+    -- Restaura colisão do personagem
+    if player.Character then
+        for _, part in pairs(player.Character:GetChildren()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = true
+            end
+        end
+    end
+end
+
+-- Função para atualizar visual do botão
+local function updateButtonVisual()
+    local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    
+    if antiFlingEnabled then
+        -- ON - Verde
+        local colorTween = TweenService:Create(toggleButton, tweenInfo, {
+            BackgroundColor3 = Color3.fromRGB(50, 200, 80),
+            TextColor3 = Color3.fromRGB(255, 255, 255)
+        })
+        colorTween:Play()
+        toggleButton.Text = "ON"
+        
+        -- Efeito de brilho
+        local originalSize = toggleButton.Size
+        local scaleTween = TweenService:Create(toggleButton, TweenInfo.new(0.1), {Size = originalSize + UDim2.new(0, 4, 0, 2)})
+        scaleTween:Play()
+        scaleTween.Completed:Connect(function()
+            local backTween = TweenService:Create(toggleButton, TweenInfo.new(0.1), {Size = originalSize})
+            backTween:Play()
+        end)
+    else
+        -- OFF - Vermelho/Cinza
+        local colorTween = TweenService:Create(toggleButton, tweenInfo, {
+            BackgroundColor3 = Color3.fromRGB(60, 60, 70),
+            TextColor3 = Color3.fromRGB(255, 100, 100)
+        })
+        colorTween:Play()
+        toggleButton.Text = "OFF"
+    end
+end
+
+-- Função de toggle
+local function toggleAntiFling()
+    antiFlingEnabled = not antiFlingEnabled
+    updateButtonVisual()
+    
+    if antiFlingEnabled then
+        startScript()
+    else
+        stopScript()
+    end
+end
+
+-- Conectar botão de toggle
+toggleButton.MouseButton1Click:Connect(toggleAntiFling)
+
+-- Conectar quando o personagem spawna/respawna
+player.CharacterAdded:Connect(function(character)
+    wait(1)
+    if antiFlingEnabled then
+        setupCharacterMonitoring()
+        removeSoccerBalls()
+        print("Personagem respawnado - monitoramento reativado")
+    end
+end)
+
+-- Tornar GUI arrastável
+local dragging = false
+local dragStart = nil
+local startPos = nil
+
+mainFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = mainFrame.Position
+    end
+end)
+
+mainFrame.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+mainFrame.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+
+print("🛡️ Anti-Fling GUI carregada! Clique no botão para ativar/desativar.")
